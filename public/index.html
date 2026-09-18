@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meme Radar</title>
+<style>
+body{margin:0;background:#080b10;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+header{padding:18px;font-size:21px;font-weight:800;border-bottom:1px solid #252d38}
+main{padding:15px;max-width:700px;margin:auto}
+input,button{padding:12px;border-radius:10px;border:1px solid #303b49;background:#121821;color:white}
+input{width:65%}button{background:#4da3ff;color:#06111d;font-weight:bold}
+.card{background:#121821;border:1px solid #293442;border-radius:15px;padding:15px;margin-top:12px}
+.coin{font-size:25px;font-weight:900}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.stat{background:#0b1017;padding:10px;border-radius:9px}
+.stat b{display:block;font-size:18px}
+.stat small{color:#8b98a9}
+.green{color:#42df7a}.red{color:#ff6570}.muted{color:#8996a7}
+.post{border-top:1px solid #252d38;padding:12px 0;margin-top:10px}
+</style>
+</head>
+
+<body>
+
+<header>📡 Meme Radar <span id="status" class="green">● LIVE</span></header>
+
+<main>
+
+<div>
+<input id="query"
+value="$PEPE OR $DOGE OR $SHIB OR $BONK OR $WIF">
+<button onclick="scan()">SCAN</button>
+</div>
+
+<div id="top" class="card">
+<div class="muted">TOP ACTIVITY</div>
+<div class="coin">Waiting for X…</div>
+</div>
+
+<div id="coins"></div>
+
+<div class="card">
+<h3>𝕏 Latest Posts</h3>
+<div id="posts"></div>
+</div>
+
+</main>
+
+<script>
+
+let previous={};
+
+function fmt(n){
+ if(n==null)return "—";
+ return Intl.NumberFormat("en",{notation:"compact",
+ maximumFractionDigits:1}).format(n);
+}
+
+async function scan(){
+
+ const status=document.getElementById("status");
+ status.textContent="● SCANNING";
+
+ try{
+
+  const response=await fetch(
+   "/api/search?q="+
+   encodeURIComponent(document.getElementById("query").value)
+  );
+
+  const data=await response.json();
+
+  if(!response.ok)
+   throw new Error(data.error||"X API error");
+
+  const coins={};
+
+  for(const post of data.posts){
+
+   for(const ticker of post.tickers){
+
+    if(!coins[ticker]){
+     coins[ticker]={
+      posts:0,
+      views:0,
+      engagement:0,
+      accounts:new Set(),
+      postsList:[]
+     };
+    }
+
+    const c=coins[ticker];
+
+    c.posts++;
+    c.accounts.add(post.author);
+    c.postsList.push(post);
+
+    const m=post.metrics||{};
+
+    c.engagement +=
+      (m.like_count||0)+
+      (m.retweet_count||0)+
+      (m.reply_count||0)+
+      (m.quote_count||0);
+
+    if(typeof m.impression_count==="number")
+      c.views+=m.impression_count;
+   }
+  }
+
+  const rows=Object.entries(coins)
+   .map(([ticker,c])=>{
+
+    const old=previous[ticker]||0;
+
+    const growth=old
+      ?Math.round((c.posts-old)/old*100)
+      :0;
+
+    return {ticker,c,growth};
+
+   })
+   .sort((a,b)=>b.c.posts-a.c.posts);
+
+  previous={};
+
+  rows.forEach(x=>{
+   previous[x.ticker]=x.c.posts;
+  });
+
+  if(rows.length){
+
+   const x=rows[0];
+
+   document.getElementById("top").innerHTML=`
+
+    <div class="muted">🚨 TOP ACTIVITY</div>
+
+    <div class="coin">${x.ticker}</div>
+
+    <div class="stats">
+
+     <div class="stat">
+      <b>${x.c.posts}</b>
+      <small>POSTS</small>
+     </div>
+
+     <div class="stat">
+      <b>${fmt(x.c.views)}</b>
+      <small>VIEWS*</small>
+     </div>
+
+     <div class="stat">
+      <b class="${x.growth>100?'red':''}">
+       ${x.growth>0?'+':''}${x.growth}%
+      </b>
+      <small>VELOCITY</small>
+     </div>
+
+    </div>
+   `;
+  }
+
+  document.getElementById("coins").innerHTML=
+   rows.map(x=>`
+
+    <div class="card">
+
+     <div class="coin">${x.ticker}</div>
+
+     <div class="stats">
+
+      <div class="stat">
+       <b>${x.c.posts}</b>
+       <small>POSTS</small>
+      </div>
+
+      <div class="stat">
+       <b>${fmt(x.c.views)}</b>
+       <small>VIEWS*</small>
+      </div>
+
+      <div class="stat">
+       <b>${x.c.accounts.size}</b>
+       <small>ACCOUNTS</small>
+      </div>
+
+     </div>
+
+    </div>
+
+   `).join("");
+
+  document.getElementById("posts").innerHTML=
+   data.posts.slice(0,20).map(p=>`
+
+    <div class="post">
+
+     <b>@${p.author}</b>
+
+     <span class="muted">
+      ${new Date(p.created_at).toLocaleTimeString()}
+     </span>
+
+     <br>
+
+     ${p.text}
+
+    </div>
+
+   `).join("");
+
+  status.textContent="● LIVE";
+
+ }catch(error){
+
+  status.textContent="● ERROR";
+
+  document.getElementById("top").innerHTML=
+   `<span class="red">${error.message}</span>`;
+
+ }
+
+}
+
+scan();
+
+setInterval(scan,30000);
+
+</script>
+
+</body>
+</html>
