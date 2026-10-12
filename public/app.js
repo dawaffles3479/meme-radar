@@ -27,11 +27,21 @@ const key = t => `${t.chain}:${t.address}`;
 function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
 function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 
+// The page only works when served by `npm start`; explain that instead of "Failed to fetch".
+const SERVER_DOWN = location.protocol === "file:"
+  ? "This page was opened as a file. Run `npm start` in the meme-radar folder and open http://localhost:3000 instead."
+  : "Can't reach the Meme Radar server. Make sure `npm start` is still running in your terminal, then refresh.";
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(state.adminToken ? { "x-admin-token": state.adminToken } : {}), ...opts.headers }
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", ...(state.adminToken ? { "x-admin-token": state.adminToken } : {}), ...opts.headers }
+    });
+  } catch {
+    throw new Error(SERVER_DOWN);
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && /Admin/.test(data.error || "")) {
     const t = prompt("Admin token (set by ADMIN_TOKEN on the server):");
@@ -525,7 +535,8 @@ function connect() {
 function setStatus(s) {
   const el = $("#status");
   el.className = "pill " + (s === "live" ? "live" : "warn");
-  el.textContent = s === "live" ? "● LIVE" : "● RECONNECTING";
+  el.textContent = s === "live" ? "● LIVE" : "● SERVER OFFLINE";
+  el.title = s === "live" ? "" : SERVER_DOWN;
 }
 // Tell the server which coins this screen needs live (watchlist + the open coin's trades).
 let watchTimer;
@@ -602,6 +613,9 @@ async function scanRadar() {
 }
 
 // ---------- boot ----------
+if (location.protocol === "file:") {
+  document.querySelector("main").insertAdjacentHTML("afterbegin", `<div class="card red"><b>⚠️ Not connected.</b> ${esc(SERVER_DOWN)}</div>`);
+}
 renderWatch();
 renderAlerts();
 connect();
